@@ -6,6 +6,7 @@ const STORAGE_KEY = 'ai-sdlc-tasks';
 const SPRINT_KEY = 'ai-sdlc-sprint';
 const SPRINT_HISTORY_KEY = 'ai-sdlc-sprint-history';
 const ACTIVITY_KEY = 'ai-sdlc-activity';
+const THEME_KEY = 'ai-sdlc-theme';
 
 const COLUMNS = ['backlog', 'inprogress', 'review', 'done'];
 
@@ -40,6 +41,8 @@ let barRects = [];          // canvas bar hit areas for click detection
 
 // ── Init ───────────────────────────────────────
 function init() {
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  applyTheme(storedTheme === 'light' ? 'light' : 'dark');
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     tasks = JSON.parse(stored);
@@ -812,6 +815,11 @@ function bindGlobalEvents() {
 
   // Activity feed events
   document.getElementById('activity-btn').addEventListener('click', openActivityFeed);
+  document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+    const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    applyTheme(nextTheme);
+    localStorage.setItem(THEME_KEY, nextTheme);
+  });
   document.getElementById('activity-close').addEventListener('click', closeActivityFeed);
   document.getElementById('activity-filter-col').addEventListener('change', renderActivityFeed);
   document.getElementById('activity-filter-task').addEventListener('input', renderActivityFeed);
@@ -863,6 +871,17 @@ function uid() {
 
 function escHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function applyTheme(theme) {
+  const nextTheme = theme === 'light' ? 'light' : 'dark';
+  const toggleBtn = document.getElementById('theme-toggle-btn');
+  document.documentElement.dataset.theme = nextTheme;
+  if (!toggleBtn) return;
+  const label = nextTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
+  toggleBtn.textContent = nextTheme === 'light' ? '🌙' : '☀️';
+  toggleBtn.title = label;
+  toggleBtn.setAttribute('aria-label', label);
 }
 
 // ── Boot ───────────────────────────────────────
