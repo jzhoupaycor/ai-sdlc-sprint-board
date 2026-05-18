@@ -18,6 +18,7 @@
         <div id="sprint-timer-wrap" class="sprint-timer-wrap hidden"></div>
         <button id="start-sprint-btn" class="sprint-start-btn" title="Start a new sprint">▶ Sprint</button>
         <button id="velocity-btn" class="velocity-btn" title="View sprint velocity">📊 Velocity</button>
+        <button id="activity-btn" class="activity-btn" title="Activity Feed">📋 Feed</button>
         <button id="clear-btn" title="Clear all tasks">🗑 Clear</button>
         <button id="add-btn">＋ New Task</button>
       </div>
@@ -169,6 +170,27 @@
 
   <!-- Toast notifications -->
   <div id="toast-container"></div>
+
+  <!-- Activity Feed Drawer -->
+  <div id="activity-drawer" class="activity-drawer">
+    <div class="activity-header">
+      <h3>📋 Activity Feed</h3>
+      <button id="activity-close" title="Close">✕</button>
+    </div>
+    <div class="activity-filters">
+      <input id="activity-filter-task" type="text" placeholder="Filter by task…" autocomplete="off" />
+      <select id="activity-filter-col">
+        <option value="">All columns</option>
+        <option value="backlog">Backlog</option>
+        <option value="inprogress">In Progress</option>
+        <option value="review">Review</option>
+        <option value="done">Done</option>
+      </select>
+    </div>
+    <div id="activity-list" class="activity-list">
+      <!-- filled by JS -->
+    </div>
+  </div>
 
   <footer>
     <p>
