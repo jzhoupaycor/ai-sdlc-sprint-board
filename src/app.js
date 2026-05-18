@@ -5,6 +5,7 @@
 const STORAGE_KEY = 'ai-sdlc-tasks';
 const SPRINT_KEY = 'ai-sdlc-sprint';
 const SPRINT_HISTORY_KEY = 'ai-sdlc-sprint-history';
+const ACTIVITY_KEY = 'ai-sdlc-activity';
 
 const COLUMNS = ['backlog', 'inprogress', 'review', 'done'];
 
@@ -26,6 +27,10 @@ let tasks = [];
 let dragSrcId = null;
 let editingTaskId = null;
 
+// ── Comments / Activity State ───────────────────
+let activityLog = [];
+let openCommentPanels = new Set();
+
 // ── Sprint State ────────────────────────────────
 let sprint = null;          // { name, startTs, endTs }
 let sprintHistory = [];     // last 6 completed sprints
@@ -38,10 +43,14 @@ function init() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     tasks = JSON.parse(stored);
+    // Ensure all tasks have a comments array (backwards compat)
+    tasks.forEach(t => { if (!t.comments) t.comments = []; });
   } else {
     tasks = defaultTasks();
     save();
   }
+  const storedActivity = localStorage.getItem(ACTIVITY_KEY);
+  activityLog = storedActivity ? JSON.parse(storedActivity) : [];
   render();
   bindGlobalEvents();
   initSprint();
@@ -49,20 +58,40 @@ function init() {
 
 function defaultTasks() {
   return [
-    { id: uid(), title: 'Define sprint goals with PM', priority: 'high',   assignee: '@alice',   status: 'done' },
-    { id: uid(), title: 'Design system — dark mode tokens', priority: 'medium', assignee: '@bob', status: 'done' },
-    { id: uid(), title: 'Implement drag-and-drop board', priority: 'high',  assignee: '@agent🤖', status: 'done' },
-    { id: uid(), title: 'Add CI lint + HTML validation', priority: 'medium', assignee: '@agent🤖', status: 'review' },
-    { id: uid(), title: 'Set up GitHub Actions deploy',  priority: 'high',  assignee: '@agent🤖', status: 'review' },
-    { id: uid(), title: 'Write unit tests for board logic', priority: 'medium', assignee: '@carol', status: 'inprogress' },
-    { id: uid(), title: 'Accessibility audit (WCAG AA)',  priority: 'low',   assignee: '@carol',   status: 'backlog' },
-    { id: uid(), title: 'Add keyboard navigation support', priority: 'low', assignee: '',         status: 'backlog' },
+    { id: uid(), title: 'Define sprint goals with PM', priority: 'high',   assignee: '@alice',   status: 'done',       comments: [] },
+    { id: uid(), title: 'Design system — dark mode tokens', priority: 'medium', assignee: '@bob', status: 'done',   comments: [] },
+    { id: uid(), title: 'Implement drag-and-drop board', priority: 'high',  assignee: '@agent🤖', status: 'done',     comments: [] },
+    { id: uid(), title: 'Add CI lint + HTML validation', priority: 'medium', assignee: '@agent🤖', status: 'review',  comments: [] },
+    { id: uid(), title: 'Set up GitHub Actions deploy',  priority: 'high',  assignee: '@agent🤖', status: 'review',   comments: [] },
+    { id: uid(), title: 'Write unit tests for board logic', priority: 'medium', assignee: '@carol', status: 'inprogress', comments: [] },
+    { id: uid(), title: 'Accessibility audit (WCAG AA)',  priority: 'low',   assignee: '@carol',   status: 'backlog',  comments: [] },
+    { id: uid(), title: 'Add keyboard navigation support', priority: 'low', assignee: '',         status: 'backlog',  comments: [] },
   ];
 }
 
 // ── Persist ────────────────────────────────────
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+function saveActivity() {
+  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activityLog));
+}
+
+function logActivity(type, task, extra = {}) {
+  activityLog.push({
+    id: uid(),
+    type,
+    taskId: task.id,
+    taskTitle: task.title,
+    column: task.status,
+    author: task.assignee || 'Anonymous',
+    text: extra.text || '',
+    createdAt: Date.now(),
+  });
+  saveActivity();
+  if (!document.getElementById('activity-drawer').classList.contains('open')) return;
+  renderActivityFeed();
 }
 
 // ── Search ─────────────────────────────────────
@@ -119,14 +148,29 @@ function makeCard(task) {
     })
     .join('');
 
+  const comments = task.comments || [];
+  const isOpen = openCommentPanels.has(task.id);
+  const countBadge = comments.length > 0
+    ? `<span class="comment-count-badge">💬 ${comments.length}</span>`
+    : '';
+
   card.innerHTML = `
     <button class="card-delete" data-id="${task.id}" title="Delete">✕</button>
     <div class="card-title">${escHtml(task.title)}</div>
     <div class="card-meta">
       <span class="priority-tag priority-${task.priority}">${PRIORITY_LABELS[task.priority]}</span>
       ${task.assignee ? `<span class="assignee-tag">${escHtml(task.assignee)}</span>` : ''}
+      ${countBadge}
     </div>
-    <div class="card-move-btns">${moveBtns}</div>`;
+    <div class="card-move-btns">${moveBtns}</div>
+    <button class="card-comments-toggle" title="Toggle comments">💬 ${comments.length} comment${comments.length !== 1 ? 's' : ''}</button>
+    <div class="card-comments${isOpen ? ' open' : ''}">
+      <div class="comment-list">${renderCommentList(comments)}</div>
+      <div class="comment-input-wrap">
+        <input type="text" class="comment-input" placeholder="Add a comment…" maxlength="200" />
+        <button class="comment-submit">Post</button>
+      </div>
+    </div>`;
 
   // Drag events
   card.addEventListener('dragstart', onDragStart);
@@ -146,10 +190,83 @@ function makeCard(task) {
     });
   });
 
+  // Toggle comments panel
+  card.querySelector('.card-comments-toggle').addEventListener('click', e => {
+    e.stopPropagation();
+    const panel = card.querySelector('.card-comments');
+    if (openCommentPanels.has(task.id)) {
+      openCommentPanels.delete(task.id);
+      panel.classList.remove('open');
+    } else {
+      openCommentPanels.add(task.id);
+      panel.classList.add('open');
+      card.querySelector('.comment-input').focus();
+    }
+  });
+
+  // Submit comment via button
+  card.querySelector('.comment-submit').addEventListener('click', e => {
+    e.stopPropagation();
+    submitComment(task.id, card.querySelector('.comment-input'));
+  });
+
+  // Submit comment via Enter key
+  card.querySelector('.comment-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.stopPropagation();
+      submitComment(task.id, card.querySelector('.comment-input'));
+    }
+  });
+
+  // Prevent card-level click when interacting with the comment input
+  card.querySelector('.comment-input').addEventListener('click', e => e.stopPropagation());
+
   // Click to edit
   card.addEventListener('click', () => openModal(task.status, task.id));
 
   return card;
+}
+
+function renderCommentList(comments) {
+  if (!comments.length) return '<p class="no-comments">No comments yet.</p>';
+  return comments.map(c => `
+    <div class="comment">
+      <div class="comment-header">
+        <span class="comment-author">${escHtml(c.author)}</span>
+        <span class="comment-time">${formatTime(c.createdAt)}</span>
+      </div>
+      <div class="comment-text">${escHtml(c.text)}</div>
+    </div>`).join('');
+}
+
+function submitComment(taskId, inputEl) {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  if (!task.comments) task.comments = [];
+  task.comments.push({ id: uid(), author: task.assignee || 'Anonymous', text, createdAt: Date.now() });
+  save();
+  logActivity('task_commented', task, { text });
+
+  // Update card DOM in-place (avoid full re-render to keep panel open)
+  const card = document.querySelector(`.card[data-id="${taskId}"]`);
+  if (card) {
+    card.querySelector('.comment-list').innerHTML = renderCommentList(task.comments);
+    card.querySelector('.card-comments-toggle').textContent =
+      `💬 ${task.comments.length} comment${task.comments.length !== 1 ? 's' : ''}`;
+    let badge = card.querySelector('.comment-count-badge');
+    if (badge) {
+      badge.textContent = `💬 ${task.comments.length}`;
+    } else {
+      badge = document.createElement('span');
+      badge.className = 'comment-count-badge';
+      badge.textContent = `💬 ${task.comments.length}`;
+      card.querySelector('.card-meta').appendChild(badge);
+    }
+  }
+  inputEl.value = '';
+  inputEl.focus();
 }
 
 // ── Drag & Drop ────────────────────────────────
@@ -186,6 +303,7 @@ function bindDropZones() {
           task.status = targetStatus;
           save();
           render();
+          logActivity('task_moved', task);
           toast(`Moved to ${COL_LABELS[targetStatus]}`, 'success');
         }
         dragSrcId = null;
@@ -204,10 +322,13 @@ function moveTask(id, dir) {
   task.status = COLUMNS[newIdx];
   save();
   render();
+  logActivity('task_moved', task);
   toast(`Moved to ${COL_LABELS[task.status]}`, 'success');
 }
 
 function deleteTask(id) {
+  const task = tasks.find(t => t.id === id);
+  if (task) logActivity('task_deleted', task);
   tasks = tasks.filter(t => t.id !== id);
   save();
   render();
@@ -267,7 +388,9 @@ function saveModal() {
     task.status   = col;
     toast('Task updated ✓', 'success');
   } else {
-    tasks.push({ id: uid(), title: input, priority, assignee, status: col });
+    const newTask = { id: uid(), title: input, priority, assignee, status: col, comments: [] };
+    tasks.push(newTask);
+    logActivity('task_created', newTask);
     toast('Task created ✓', 'success');
   }
 
@@ -524,6 +647,75 @@ function showSprintDetail(s) {
     </div>`;
 }
 
+// ── Activity Feed ──────────────────────────────
+function openActivityFeed() {
+  document.getElementById('activity-drawer').classList.add('open');
+  renderActivityFeed();
+}
+
+function closeActivityFeed() {
+  document.getElementById('activity-drawer').classList.remove('open');
+}
+
+function renderActivityFeed() {
+  const filterTask = (document.getElementById('activity-filter-task').value || '').toLowerCase();
+  const filterCol  = document.getElementById('activity-filter-col').value;
+  const list = document.getElementById('activity-list');
+
+  let events = [...activityLog].reverse();
+  if (filterCol)  events = events.filter(e => e.column === filterCol);
+  if (filterTask) events = events.filter(e => e.taskTitle.toLowerCase().includes(filterTask));
+
+  if (!events.length) {
+    list.innerHTML = '<p class="no-activity">No activity yet.</p>';
+    return;
+  }
+  list.innerHTML = events.map(e => `
+    <div class="activity-item">
+      <span class="activity-icon">${getActivityIcon(e.type)}</span>
+      <div class="activity-body">
+        <div class="activity-text">${getActivityText(e)}</div>
+        <div class="activity-time">${formatTime(e.createdAt)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function getActivityIcon(type) {
+  switch (type) {
+    case 'task_created':   return '✨';
+    case 'task_moved':     return '🚀';
+    case 'task_commented': return '💬';
+    case 'task_deleted':   return '🗑';
+    default:               return '📌';
+  }
+}
+
+function getActivityText(e) {
+  const author = `<strong>${escHtml(e.author)}</strong>`;
+  const title  = `<em>${escHtml(e.taskTitle)}</em>`;
+  const col    = COL_LABELS[e.column] || e.column;
+  switch (e.type) {
+    case 'task_created':
+      return `${author} created ${title} in ${col}`;
+    case 'task_moved':
+      return `${author} moved ${title} to ${col}`;
+    case 'task_commented':
+      return `${author} commented on ${title}: &ldquo;${escHtml(e.text)}&rdquo;`;
+    case 'task_deleted':
+      return `${author} deleted ${title}`;
+    default:
+      return escHtml(e.taskTitle);
+  }
+}
+
+function formatTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 60000)    return 'just now';
+  if (diff < 3600000)  return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 // ── Global Events ──────────────────────────────
 function bindGlobalEvents() {
   document.getElementById('search-input').addEventListener('input', e => {
@@ -555,6 +747,7 @@ function bindGlobalEvents() {
       closeModal();
       closeSprintModal();
       closeVelocityModal();
+      closeActivityFeed();
     }
     if (e.key === 'Enter' && !document.getElementById('modal-overlay').classList.contains('hidden')) {
       saveModal();
@@ -593,6 +786,12 @@ function bindGlobalEvents() {
       }
     }
   });
+
+  // Activity feed events
+  document.getElementById('activity-btn').addEventListener('click', openActivityFeed);
+  document.getElementById('activity-close').addEventListener('click', closeActivityFeed);
+  document.getElementById('activity-filter-col').addEventListener('change', renderActivityFeed);
+  document.getElementById('activity-filter-task').addEventListener('input', renderActivityFeed);
 
   window.addEventListener('resize', () => {
     if (!document.getElementById('velocity-modal-overlay').classList.contains('hidden')) {
