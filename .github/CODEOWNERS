@@ -1,0 +1,16 @@
+# CODEOWNERS — Automatic review assignments
+#
+# Any PR that touches these paths will automatically
+# request a review from the listed owner(s).
+# At least ONE owner must approve before merge is allowed
+# (enforced by branch protection rules).
+
+# Global fallback — everything requires review
+*       @jzhoupaycor
+
+# GitHub Actions workflows — extra scrutiny
+.github/workflows/  @jzhoupaycor
+
+# Core app files
+index.html          @jzhoupaycor
+src/                @jzhoupaycor

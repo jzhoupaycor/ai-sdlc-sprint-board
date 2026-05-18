@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI SDLC — Sprint Board</title>
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">AI&nbsp;SDLC&nbsp;Sprint&nbsp;Board</span>
+      </div>
+      <div class="header-meta">
+        <span id="task-count">0 tasks</span>
+        <button id="clear-btn" title="Clear all tasks">🗑 Clear</button>
+        <button id="add-btn">＋ New Task</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Pipeline banner -->
+  <div class="pipeline-bar">
+    <div class="pipeline-step done-step">
+      <span class="step-icon">✅</span> Code Written
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step active-step">
+      <span class="step-icon">🔍</span> PR Review
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step">
+      <span class="step-icon">🤖</span> CI Checks
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-step">
+      <span class="step-icon">🚀</span> Auto-Deploy
+    </div>
+  </div>
+
+  <main>
+    <div class="board" id="board">
+
+      <section class="column" id="col-backlog" data-status="backlog">
+        <div class="column-header">
+          <span class="col-dot dot-backlog"></span>
+          <h2>Backlog</h2>
+          <span class="col-count" id="count-backlog">0</span>
+        </div>
+        <div class="card-list" id="list-backlog" data-status="backlog"></div>
+        <button class="add-in-col" data-col="backlog">＋ Add task</button>
+      </section>
+
+      <section class="column" id="col-inprogress" data-status="inprogress">
+        <div class="column-header">
+          <span class="col-dot dot-inprogress"></span>
+          <h2>In&nbsp;Progress</h2>
+          <span class="col-count" id="count-inprogress">0</span>
+        </div>
+        <div class="card-list" id="list-inprogress" data-status="inprogress"></div>
+        <button class="add-in-col" data-col="inprogress">＋ Add task</button>
+      </section>
+
+      <section class="column" id="col-review" data-status="review">
+        <div class="column-header">
+          <span class="col-dot dot-review"></span>
+          <h2>Review&nbsp;<span class="badge">👀 Human</span></h2>
+          <span class="col-count" id="count-review">0</span>
+        </div>
+        <div class="card-list" id="list-review" data-status="review"></div>
+        <button class="add-in-col" data-col="review">＋ Add task</button>
+      </section>
+
+      <section class="column" id="col-done" data-status="done">
+        <div class="column-header">
+          <span class="col-dot dot-done"></span>
+          <h2>Done&nbsp;<span class="badge badge-green">🚀 Deployed</span></h2>
+          <span class="col-count" id="count-done">0</span>
+        </div>
+        <div class="card-list" id="list-done" data-status="done"></div>
+        <button class="add-in-col" data-col="done">＋ Add task</button>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Add Task Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 id="modal-title">New Task</h3>
+      <label>Title
+        <input id="modal-input" type="text" placeholder="e.g. Fix login redirect bug" maxlength="80" />
+      </label>
+      <label>Priority
+        <select id="modal-priority">
+          <option value="low">🟢 Low</option>
+          <option value="medium" selected>🟡 Medium</option>
+          <option value="high">🔴 High</option>
+        </select>
+      </label>
+      <label>Assignee
+        <input id="modal-assignee" type="text" placeholder="@username" maxlength="30" />
+      </label>
+      <label>Column
+        <select id="modal-col">
+          <option value="backlog">Backlog</option>
+          <option value="inprogress">In Progress</option>
+          <option value="review">Review</option>
+          <option value="done">Done</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-save" class="primary">Save Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container"></div>
+
+  <footer>
+    <p>
+      Built with ❤️ by AI Agents · Delivered via
+      <a href="https://github.com/features/actions" target="_blank">GitHub Actions</a> ·
+      Hosted on <a href="https://pages.github.com" target="_blank">GitHub Pages</a>
+    </p>
+  </footer>
+
+  <script src="src/app.js"></script>
+</body>
+</html>

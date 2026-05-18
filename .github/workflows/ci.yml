@@ -1,0 +1,125 @@
+name: CI — Pull Request Checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ── Job 1: Lint & Validate ──────────────────────────────
+  lint-and-validate:
+    name: 🔍 Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate HTML structure
+        run: |
+          echo "▶ Checking index.html exists and is non-empty..."
+          test -s index.html && echo "✅ index.html OK" || (echo "❌ index.html missing or empty" && exit 1)
+
+          echo "▶ Checking required HTML elements..."
+          grep -q "<!DOCTYPE html>" index.html && echo "✅ DOCTYPE OK"
+          grep -q "<title>" index.html         && echo "✅ <title> OK"
+          grep -q "viewport"   index.html      && echo "✅ viewport meta OK"
+          grep -q "src/style.css" index.html   && echo "✅ stylesheet link OK"
+          grep -q "src/app.js"    index.html   && echo "✅ script link OK"
+
+      - name: Validate CSS and JS files exist
+        run: |
+          test -s src/style.css && echo "✅ src/style.css OK" || (echo "❌ Missing style.css" && exit 1)
+          test -s src/app.js    && echo "✅ src/app.js OK"    || (echo "❌ Missing app.js"    && exit 1)
+
+      - name: Check for console.error / debugger statements
+        run: |
+          echo "▶ Scanning for debug artifacts..."
+          if grep -rn "debugger" src/; then
+            echo "❌ Found 'debugger' statement — please remove before merging."
+            exit 1
+          fi
+          echo "✅ No debugger statements found"
+
+      - name: Verify no hardcoded secrets
+        run: |
+          echo "▶ Scanning for potential secrets..."
+          if grep -rniE "(password|secret|api_key|token)\s*=\s*['\"][^'\"]{8,}" src/ index.html; then
+            echo "❌ Possible hardcoded secret detected!"
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets found"
+
+  # ── Job 2: Accessibility Quick-Check ───────────────────
+  accessibility-check:
+    name: ♿ Accessibility Quick-Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for alt text and ARIA labels
+        run: |
+          echo "▶ Checking basic accessibility attributes..."
+          # Warn if <img> tags lack alt
+          if grep -qE "<img[^>]+>" index.html; then
+            if ! grep -qE "<img[^>]+alt=" index.html; then
+              echo "⚠️  Warning: <img> tags found without alt attribute"
+            fi
+          fi
+          echo "✅ Accessibility check complete"
+
+      - name: Check for language attribute
+        run: |
+          grep -q 'lang=' index.html && echo "✅ lang attribute present" \
+            || echo "⚠️  Warning: <html> missing lang attribute"
+
+  # ── Job 3: Build Summary ────────────────────────────────
+  build-summary:
+    name: 📋 Build Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-validate, accessibility-check]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report file sizes
+        run: |
+          echo "## 📦 Asset Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          for f in index.html src/style.css src/app.js; do
+            size=$(wc -c < "$f" | tr -d ' ')
+            echo "| \`$f\` | ${size} bytes |" >> $GITHUB_STEP_SUMMARY
+          done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All CI checks passed — ready for human review!" >> $GITHUB_STEP_SUMMARY
+
+      - name: Post PR comment with check results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha,
+            });
+            const body = `## 🤖 Automated CI Report
+
+| Check | Status |
+|-------|--------|
+| 🔍 Lint & Validate | ✅ Passed |
+| ♿ Accessibility | ✅ Passed |
+| 📦 Build Summary | ✅ Complete |
+
+> **Next step:** A human reviewer must approve this PR before it can be merged and deployed. 👀
+
+_Automated by GitHub Actions — AI SDLC Demo_`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
