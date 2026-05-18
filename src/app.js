@@ -318,11 +318,15 @@ function bindDropZones() {
       if (dragSrcId) {
         const task = tasks.find(t => t.id === dragSrcId);
         if (task && task.status !== targetStatus) {
+          const movedToDone = targetStatus === 'done';
           task.status = targetStatus;
           save();
           render();
           logActivity('task_moved', task);
           toast(`Moved to ${COL_LABELS[targetStatus]}`, 'success');
+          if (movedToDone) {
+            celebrateDoneColumn();
+          }
         }
         dragSrcId = null;
       }
@@ -337,11 +341,16 @@ function moveTask(id, dir) {
   const idx = COLUMNS.indexOf(task.status);
   const newIdx = dir === 'next' ? idx + 1 : idx - 1;
   if (newIdx < 0 || newIdx >= COLUMNS.length) return;
-  task.status = COLUMNS[newIdx];
+  const nextStatus = COLUMNS[newIdx];
+  const movedToDone = nextStatus === 'done';
+  task.status = nextStatus;
   save();
   render();
   logActivity('task_moved', task);
   toast(`Moved to ${COL_LABELS[task.status]}`, 'success');
+  if (movedToDone) {
+    celebrateDoneColumn();
+  }
 }
 
 function deleteTask(id) {
@@ -833,6 +842,33 @@ function toast(msg, type = 'info') {
   el.textContent = msg;
   container.appendChild(el);
   setTimeout(() => el.remove(), 3200);
+}
+
+function celebrateDoneColumn() {
+  if (typeof window.confetti !== 'function') return;
+  const doneCol = document.getElementById('col-done');
+  if (!doneCol) return;
+
+  const rect = doneCol.getBoundingClientRect();
+  const origin = {
+    x: (rect.left + rect.width / 2) / window.innerWidth,
+    y: (rect.top + rect.height / 2) / window.innerHeight,
+  };
+
+  const endTime = Date.now() + 1500;
+  const burst = () => {
+    window.confetti({
+      particleCount: 28,
+      spread: 72,
+      startVelocity: 32,
+      ticks: 80,
+      origin,
+    });
+    if (Date.now() < endTime) {
+      setTimeout(burst, 220);
+    }
+  };
+  burst();
 }
 
 // ── Due Date Helpers ───────────────────────────
