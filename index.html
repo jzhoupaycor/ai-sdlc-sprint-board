@@ -15,6 +15,9 @@
       </div>
       <div class="header-meta">
         <span id="task-count">0 tasks</span>
+        <div id="sprint-timer-wrap" class="sprint-timer-wrap hidden"></div>
+        <button id="start-sprint-btn" class="sprint-start-btn" title="Start a new sprint">▶ Sprint</button>
+        <button id="velocity-btn" class="velocity-btn" title="View sprint velocity">📊 Velocity</button>
         <button id="clear-btn" title="Clear all tasks">🗑 Clear</button>
         <button id="add-btn">＋ New Task</button>
       </div>
@@ -98,6 +101,39 @@
 
     </div>
   </main>
+
+  <!-- Sprint Setup Modal -->
+  <div id="sprint-modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>🚀 Start New Sprint</h3>
+      <label>Sprint Name
+        <input id="sprint-name-input" type="text" placeholder="e.g. Sprint 7" maxlength="40" />
+      </label>
+      <label>Duration
+        <select id="sprint-duration">
+          <option value="1">1 Week</option>
+          <option value="2" selected>2 Weeks</option>
+          <option value="4">4 Weeks</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button id="sprint-modal-cancel">Cancel</button>
+        <button id="sprint-modal-start" class="primary">▶ Start Sprint</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Velocity Chart Modal -->
+  <div id="velocity-modal-overlay" class="modal-overlay hidden">
+    <div class="modal velocity-modal">
+      <div class="velocity-header">
+        <h3>📊 Sprint Velocity</h3>
+        <button id="velocity-close" title="Close">✕</button>
+      </div>
+      <canvas id="velocity-canvas"></canvas>
+      <div id="velocity-detail" class="velocity-detail"></div>
+    </div>
+  </div>
 
   <!-- Add Task Modal -->
   <div id="modal-overlay" class="modal-overlay hidden">

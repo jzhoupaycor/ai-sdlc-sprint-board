@@ -3,6 +3,8 @@
    ============================================= */
 
 const STORAGE_KEY = 'ai-sdlc-tasks';
+const SPRINT_KEY = 'ai-sdlc-sprint';
+const SPRINT_HISTORY_KEY = 'ai-sdlc-sprint-history';
 
 const COLUMNS = ['backlog', 'inprogress', 'review', 'done'];
 
@@ -24,6 +26,13 @@ let tasks = [];
 let dragSrcId = null;
 let editingTaskId = null;
 
+// ── Sprint State ────────────────────────────────
+let sprint = null;          // { name, startTs, endTs }
+let sprintHistory = [];     // last 6 completed sprints
+let timerRafId = null;
+let lastTimerTick = 0;
+let barRects = [];          // canvas bar hit areas for click detection
+
 // ── Init ───────────────────────────────────────
 function init() {
   const stored = localStorage.getItem(STORAGE_KEY);
@@ -35,6 +44,7 @@ function init() {
   }
   render();
   bindGlobalEvents();
+  initSprint();
 }
 
 function defaultTasks() {
@@ -266,6 +276,254 @@ function saveModal() {
   closeModal();
 }
 
+// ── Sprint ─────────────────────────────────────
+function initSprint() {
+  const stored = localStorage.getItem(SPRINT_KEY);
+  sprint = stored ? JSON.parse(stored) : null;
+  const hist = localStorage.getItem(SPRINT_HISTORY_KEY);
+  sprintHistory = hist ? JSON.parse(hist) : [];
+  renderSprintTimer();
+  if (sprint && Date.now() < sprint.endTs) startTimerLoop();
+  else if (sprint) renderSprintTimer(); // show expired state
+}
+
+function openSprintModal() {
+  document.getElementById('sprint-modal-overlay').classList.remove('hidden');
+  const nameInput = document.getElementById('sprint-name-input');
+  nameInput.value = '';
+  nameInput.focus();
+}
+
+function closeSprintModal() {
+  document.getElementById('sprint-modal-overlay').classList.add('hidden');
+}
+
+function confirmStartSprint() {
+  const nameInput = document.getElementById('sprint-name-input');
+  const name = nameInput.value.trim();
+  if (!name) { nameInput.focus(); return; }
+  const weeks = parseInt(document.getElementById('sprint-duration').value, 10);
+  const now = Date.now();
+  sprint = { name, startTs: now, endTs: now + weeks * 7 * 24 * 60 * 60 * 1000 };
+  localStorage.setItem(SPRINT_KEY, JSON.stringify(sprint));
+  closeSprintModal();
+  renderSprintTimer();
+  startTimerLoop();
+  toast(`Sprint "${name}" started! 🚀`, 'success');
+}
+
+function endSprint() {
+  if (!sprint) return;
+  const doneTasks = tasks.filter(t => t.status === 'done');
+  if (!confirm(`End sprint "${sprint.name}"?\n${doneTasks.length} Done task${doneTasks.length !== 1 ? 's' : ''} will be archived and the Done column cleared.`)) return;
+
+  const record = {
+    name: sprint.name,
+    startDate: new Date(sprint.startTs).toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+    completed: doneTasks.map(t => t.title),
+  };
+  sprintHistory.push(record);
+  if (sprintHistory.length > 6) sprintHistory = sprintHistory.slice(-6);
+  localStorage.setItem(SPRINT_HISTORY_KEY, JSON.stringify(sprintHistory));
+
+  tasks = tasks.filter(t => t.status !== 'done');
+  save();
+  render();
+
+  const sprintName = sprint.name;
+  sprint = null;
+  localStorage.removeItem(SPRINT_KEY);
+  if (timerRafId) { cancelAnimationFrame(timerRafId); timerRafId = null; }
+  renderSprintTimer();
+  toast(`"${sprintName}" ended — ${doneTasks.length} task${doneTasks.length !== 1 ? 's' : ''} archived 🎉`, 'success');
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return 'Expired';
+  const totalSecs = Math.floor(ms / 1000);
+  const secs = totalSecs % 60;
+  const totalMins = Math.floor(totalSecs / 60);
+  const mins = totalMins % 60;
+  const totalHours = Math.floor(totalMins / 60);
+  const hours = totalHours % 24;
+  const days = Math.floor(totalHours / 24);
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  return `${mins}m ${secs}s`;
+}
+
+function renderSprintTimer() {
+  const wrap = document.getElementById('sprint-timer-wrap');
+  const startBtn = document.getElementById('start-sprint-btn');
+  if (!wrap || !startBtn) return;
+
+  if (!sprint) {
+    wrap.classList.add('hidden');
+    startBtn.classList.remove('hidden');
+    return;
+  }
+
+  const now = Date.now();
+  const remaining = Math.max(0, sprint.endTs - now);
+  const total = sprint.endTs - sprint.startTs;
+  const pct = Math.min(100, Math.round(((now - sprint.startTs) / total) * 100));
+  const expired = remaining === 0;
+
+  startBtn.classList.add('hidden');
+  wrap.classList.remove('hidden');
+  wrap.innerHTML = `
+    <span class="sprint-label">${escHtml(sprint.name)}</span>
+    <span class="sprint-countdown${expired ? ' expired' : ''}">⏱ ${formatCountdown(remaining)}</span>
+    <div class="sprint-progress-wrap" title="${pct}% elapsed">
+      <div class="sprint-progress-fill" style="width:${pct}%"></div>
+    </div>
+    <button class="end-sprint-btn" id="end-sprint-btn">End Sprint</button>`;
+}
+
+function startTimerLoop() {
+  if (timerRafId) cancelAnimationFrame(timerRafId);
+  lastTimerTick = 0;
+  function tick(ts) {
+    if (ts - lastTimerTick >= 1000) {
+      lastTimerTick = ts;
+      renderSprintTimer();
+    }
+    if (sprint && Date.now() < sprint.endTs) {
+      timerRafId = requestAnimationFrame(tick);
+    } else {
+      timerRafId = null;
+      renderSprintTimer();
+    }
+  }
+  timerRafId = requestAnimationFrame(tick);
+}
+
+// ── Velocity Chart ──────────────────────────────
+function openVelocityModal() {
+  document.getElementById('velocity-modal-overlay').classList.remove('hidden');
+  document.getElementById('velocity-detail').innerHTML = '';
+  requestAnimationFrame(drawVelocityChart);
+}
+
+function closeVelocityModal() {
+  document.getElementById('velocity-modal-overlay').classList.add('hidden');
+}
+
+function drawBarPath(ctx, x, y, w, h, r) {
+  const cr = Math.min(r, h > 0 ? h : 0, w / 2);
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x, y + cr);
+  ctx.quadraticCurveTo(x, y, x + cr, y);
+  ctx.lineTo(x + w - cr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + cr);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+}
+
+function drawVelocityChart() {
+  const canvas = document.getElementById('velocity-canvas');
+  if (!canvas) return;
+  barRects = [];
+
+  const parent = canvas.parentElement;
+  canvas.width = parent.clientWidth;
+  canvas.height = 280;
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const history = sprintHistory.slice(-6);
+
+  if (history.length === 0) {
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('No sprint history yet. Complete a sprint to see velocity!', W / 2, H / 2);
+    return;
+  }
+
+  const maxVal = Math.max(...history.map(s => s.completed.length), 1);
+  const pad = { top: 36, bottom: 58, left: 44, right: 16 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top - pad.bottom;
+  const gridLines = 4;
+
+  for (let i = 0; i <= gridLines; i++) {
+    const y = pad.top + (chartH / gridLines) * i;
+    const val = Math.round(maxVal * (1 - i / gridLines));
+    ctx.strokeStyle = '#30363d';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(val, pad.left - 6, y);
+  }
+
+  const slotW = chartW / history.length;
+  const barW = slotW * 0.6;
+  const barOffset = slotW * 0.2;
+
+  history.forEach((s, i) => {
+    const barH = s.completed.length === 0 ? 0 : Math.max(2, (s.completed.length / maxVal) * chartH);
+    const x = pad.left + slotW * i + barOffset;
+    const y = pad.top + chartH - barH;
+
+    barRects.push({ x, y: pad.top, w: barW, h: chartH, sprint: s });
+
+    if (barH > 0) {
+      const grad = ctx.createLinearGradient(x, y, x, y + barH);
+      grad.addColorStop(0, '#bc8cff');
+      grad.addColorStop(1, '#58a6ff');
+      ctx.fillStyle = grad;
+      drawBarPath(ctx, x, y, barW, barH, 4);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(s.completed.length, x + barW / 2, y - 4);
+
+    const maxChars = Math.max(4, Math.floor(barW / 6.5));
+    const label = s.name.length > maxChars ? s.name.slice(0, maxChars - 1) + '…' : s.name;
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, x + barW / 2, H - pad.bottom + 8);
+
+    ctx.fillStyle = '#6e7681';
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.fillText(s.endDate, x + barW / 2, H - pad.bottom + 22);
+  });
+}
+
+function showSprintDetail(s) {
+  const detail = document.getElementById('velocity-detail');
+  const taskList = s.completed.length
+    ? `<ul class="sprint-task-list">${s.completed.map(t => `<li>${escHtml(t)}</li>`).join('')}</ul>`
+    : '<p class="no-tasks-msg">No tasks were completed in this sprint.</p>';
+  detail.innerHTML = `
+    <div class="sprint-detail">
+      <div class="sprint-detail-header">
+        <strong>${escHtml(s.name)}</strong>
+        <span class="sprint-detail-dates">${s.startDate} → ${s.endDate}</span>
+        <span class="sprint-detail-count">${s.completed.length} task${s.completed.length !== 1 ? 's' : ''} completed</span>
+      </div>
+      ${taskList}
+    </div>`;
+}
+
 // ── Global Events ──────────────────────────────
 function bindGlobalEvents() {
   document.getElementById('search-input').addEventListener('input', e => {
@@ -293,9 +551,52 @@ function bindGlobalEvents() {
   });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+      closeModal();
+      closeSprintModal();
+      closeVelocityModal();
+    }
     if (e.key === 'Enter' && !document.getElementById('modal-overlay').classList.contains('hidden')) {
       saveModal();
+    }
+    if (e.key === 'Enter' && !document.getElementById('sprint-modal-overlay').classList.contains('hidden')) {
+      confirmStartSprint();
+    }
+  });
+
+  // Sprint events (use delegation for dynamically rendered End Sprint button)
+  document.getElementById('sprint-timer-wrap').addEventListener('click', e => {
+    if (e.target.id === 'end-sprint-btn') endSprint();
+  });
+  document.getElementById('start-sprint-btn').addEventListener('click', openSprintModal);
+  document.getElementById('sprint-modal-cancel').addEventListener('click', closeSprintModal);
+  document.getElementById('sprint-modal-start').addEventListener('click', confirmStartSprint);
+  document.getElementById('sprint-modal-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSprintModal();
+  });
+
+  // Velocity events
+  document.getElementById('velocity-btn').addEventListener('click', openVelocityModal);
+  document.getElementById('velocity-close').addEventListener('click', closeVelocityModal);
+  document.getElementById('velocity-modal-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeVelocityModal();
+  });
+  document.getElementById('velocity-canvas').addEventListener('click', e => {
+    const canvas = document.getElementById('velocity-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    for (const bar of barRects) {
+      if (mouseX >= bar.x && mouseX <= bar.x + bar.w) {
+        showSprintDetail(bar.sprint);
+        break;
+      }
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (!document.getElementById('velocity-modal-overlay').classList.contains('hidden')) {
+      drawVelocityChart();
     }
   });
 
