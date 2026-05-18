@@ -1,9 +1,9 @@
 # AI SDLC Sprint Board 🚀
 
-[![CI — Pull Request Checks](https://github.com/jzhoupaycor/ai-sdlc-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/jzhoupaycor/ai-sdlc-demo/actions/workflows/ci.yml)
-[![Deploy — GitHub Pages](https://github.com/jzhoupaycor/ai-sdlc-demo/actions/workflows/deploy.yml/badge.svg)](https://github.com/jzhoupaycor/ai-sdlc-demo/actions/workflows/deploy.yml)
+[![CI — Pull Request Checks](https://github.com/jzhoupaycor/ai-sdlc-sprint-board/actions/workflows/ci.yml/badge.svg)](https://github.com/jzhoupaycor/ai-sdlc-sprint-board/actions/workflows/ci.yml)
+[![Deploy — GitHub Pages](https://github.com/jzhoupaycor/ai-sdlc-sprint-board/actions/workflows/deploy.yml/badge.svg)](https://github.com/jzhoupaycor/ai-sdlc-sprint-board/actions/workflows/deploy.yml)
 
-> **Live Demo:** https://jzhoupaycor.github.io/ai-sdlc-demo/
+> **Live Demo:** https://jzhoupaycor.github.io/ai-sdlc-sprint-board/
 
 An interactive Kanban sprint board demonstrating a fully automated **AI-driven SDLC delivery workflow** with a **human-in-the-loop** code review gate.
 
@@ -89,8 +89,8 @@ All files are owned by `@jzhoupaycor`. Any PR automatically requests their revie
 
 ```bash
 # Clone the repo
-git clone https://github.com/jzhoupaycor/ai-sdlc-demo.git
-cd ai-sdlc-demo
+git clone https://github.com/jzhoupaycor/ai-sdlc-sprint-board.git
+cd ai-sdlc-sprint-board
 
 # Open in browser (no build step needed — it's static!)
 open index.html          # macOS
