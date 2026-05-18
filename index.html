@@ -21,6 +21,7 @@
         <button id="activity-btn" class="activity-btn" title="Activity Feed">📋 Feed</button>
         <button id="clear-btn" title="Clear all tasks">🗑 Clear</button>
         <button id="add-btn">＋ New Task</button>
+        <span id="overdue-count" class="overdue-badge hidden"></span>
       </div>
     </div>
   </header>
@@ -160,6 +161,9 @@
           <option value="review">Review</option>
           <option value="done">Done</option>
         </select>
+      </label>
+      <label>Due Date <span class="modal-optional">(optional)</span>
+        <input id="modal-due" type="date" />
       </label>
       <div class="modal-actions">
         <button id="modal-cancel">Cancel</button>
