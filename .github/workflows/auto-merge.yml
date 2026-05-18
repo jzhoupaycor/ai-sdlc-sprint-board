@@ -17,6 +17,10 @@ permissions:
   contents: write
   pull-requests: write
 
+# Suppress Node.js 20 deprecation warnings — GitHub will enforce Node.js 24 on June 2, 2026
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Job 1: Enable auto-merge the moment a PR is opened ──
   enable-auto-merge:
@@ -31,8 +35,9 @@ jobs:
         run: |
           PR="${{ github.event.pull_request.number }}"
           echo "Enabling auto-merge on PR #${PR}..."
-          gh pr merge "$PR" --auto --squash
-          echo "Auto-merge enabled. Waiting for CI checks and reviewer approval."
+          # Tolerate "already enabled" or "PR is closed" errors — not fatal
+          gh pr merge "$PR" --auto --squash || echo "Auto-merge already set or PR state changed — continuing."
+          echo "Auto-merge configured. Waiting for CI checks and reviewer approval."
 
   # ── Job 2: Admin-bypass merge on approval ───────────────
   # GitHub's Copilot collaboration restriction disqualifies the repo owner
@@ -52,7 +57,14 @@ jobs:
         run: |
           PR="${{ github.event.pull_request.number }}"
           REVIEWER="${{ github.event.review.user.login }}"
-          echo "PR #${PR} approved by @${REVIEWER} — merging with admin bypass..."
+          echo "PR #${PR} approved by @${REVIEWER} — checking state..."
+          # Guard: skip if PR was already merged by native auto-merge
+          STATE=$(gh pr view "$PR" --json state --jq '.state')
+          if [ "$STATE" = "MERGED" ]; then
+            echo "PR #${PR} is already merged — admin bypass not needed. Exiting."
+            exit 0
+          fi
+          echo "State is '${STATE}' — proceeding with admin bypass merge..."
           gh pr merge "$PR" --squash --admin --delete-branch
           echo "Merged PR #${PR}. Deploy workflow will now trigger."
 

@@ -12,6 +12,10 @@ permissions:
   contents: read
   pull-requests: write
 
+# Suppress Node.js 20 deprecation warnings — GitHub will enforce Node.js 24 on June 2, 2026
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Job 1: Lint & Validate ──────────────────────────────
   lint-and-validate:

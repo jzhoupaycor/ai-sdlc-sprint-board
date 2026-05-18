@@ -12,7 +12,11 @@ permissions:
   id-token: write
   pull-requests: write
 
-# Only one deploy at a time; cancel in-progress if a new one starts
+# Suppress Node.js 20 deprecation warnings — GitHub will enforce Node.js 24 on June 2, 2026
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Only one deploy at a time;cancel in-progress if a new one starts
 concurrency:
   group: pages
   cancel-in-progress: true
