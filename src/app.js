@@ -55,12 +55,33 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
 }
 
+// ── Search ─────────────────────────────────────
+let searchQuery = '';
+
+function renderStats() {
+  const wrap = document.getElementById('stats-wrap');
+  const total = tasks.length;
+  const high  = tasks.filter(t => t.priority === 'high').length;
+  const done  = tasks.filter(t => t.status  === 'done').length;
+  const pct   = total ? Math.round((done / total) * 100) : 0;
+  wrap.innerHTML = `
+    <div class="stat-chip">Total <span class="stat-val">${total}</span></div>
+    <div class="stat-chip">🔴 High <span class="stat-val">${high}</span></div>
+    <div class="stat-chip">✅ Done <span class="stat-val">${done}</span></div>
+    <div class="stat-chip">Progress <span class="stat-val">${pct}%</span></div>`;
+}
+
 // ── Render ─────────────────────────────────────
 function render() {
+  renderStats();
+  const q = searchQuery.toLowerCase();
   COLUMNS.forEach(col => {
     const list = document.getElementById(`list-${col}`);
     const count = document.getElementById(`count-${col}`);
-    const colTasks = tasks.filter(t => t.status === col);
+    const colTasks = tasks.filter(t =>
+      t.status === col &&
+      (!q || t.title.toLowerCase().includes(q) || (t.assignee || '').toLowerCase().includes(q))
+    );
     count.textContent = colTasks.length;
     list.innerHTML = '';
     colTasks.forEach(t => list.appendChild(makeCard(t)));
@@ -247,6 +268,11 @@ function saveModal() {
 
 // ── Global Events ──────────────────────────────
 function bindGlobalEvents() {
+  document.getElementById('search-input').addEventListener('input', e => {
+    searchQuery = e.target.value;
+    render();
+  });
+
   document.getElementById('add-btn').addEventListener('click', () => openModal('backlog'));
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
   document.getElementById('modal-save').addEventListener('click', saveModal);
