@@ -99,15 +99,26 @@ let searchQuery = '';
 
 function renderStats() {
   const wrap = document.getElementById('stats-wrap');
-  const total = tasks.length;
-  const high  = tasks.filter(t => t.priority === 'high').length;
-  const done  = tasks.filter(t => t.status  === 'done').length;
-  const pct   = total ? Math.round((done / total) * 100) : 0;
+  const total   = tasks.length;
+  const high    = tasks.filter(t => t.priority === 'high').length;
+  const done    = tasks.filter(t => t.status  === 'done').length;
+  const overdue = tasks.filter(t => getDueStatus(t.due) === 'overdue').length;
+  const pct     = total ? Math.round((done / total) * 100) : 0;
   wrap.innerHTML = `
     <div class="stat-chip">Total <span class="stat-val">${total}</span></div>
     <div class="stat-chip">🔴 High <span class="stat-val">${high}</span></div>
     <div class="stat-chip">✅ Done <span class="stat-val">${done}</span></div>
     <div class="stat-chip">Progress <span class="stat-val">${pct}%</span></div>`;
+
+  const badge = document.getElementById('overdue-count');
+  if (badge) {
+    if (overdue > 0) {
+      badge.textContent = `⚠️ ${overdue} overdue`;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
 }
 
 // ── Render ─────────────────────────────────────
@@ -154,6 +165,12 @@ function makeCard(task) {
     ? `<span class="comment-count-badge">💬 ${comments.length}</span>`
     : '';
 
+  const dueStatus = getDueStatus(task.due);
+  const dueTag = task.due
+    ? `<span class="due-tag due-${dueStatus}">📅 ${formatDueDate(task.due)}${dueStatus === 'overdue' ? ' · Overdue' : ''}</span>`
+    : '';
+  if (dueStatus === 'overdue') card.classList.add('overdue');
+
   card.innerHTML = `
     <button class="card-delete" data-id="${task.id}" title="Delete">✕</button>
     <div class="card-title">${escHtml(task.title)}</div>
@@ -162,6 +179,7 @@ function makeCard(task) {
       ${task.assignee ? `<span class="assignee-tag">${escHtml(task.assignee)}</span>` : ''}
       ${countBadge}
     </div>
+    ${dueTag ? `<div class="card-due">${dueTag}</div>` : ''}
     <div class="card-move-btns">${moveBtns}</div>
     <button class="card-comments-toggle" title="Toggle comments">💬 ${comments.length} comment${comments.length !== 1 ? 's' : ''}</button>
     <div class="card-comments${isOpen ? ' open' : ''}">
@@ -344,6 +362,7 @@ function openModal(defaultCol = 'backlog', taskId = null) {
   const priority = document.getElementById('modal-priority');
   const assignee = document.getElementById('modal-assignee');
   const col     = document.getElementById('modal-col');
+  const due     = document.getElementById('modal-due');
 
   if (taskId) {
     const task = tasks.find(t => t.id === taskId);
@@ -352,12 +371,14 @@ function openModal(defaultCol = 'backlog', taskId = null) {
     priority.value = task.priority;
     assignee.value = task.assignee || '';
     col.value = task.status;
+    due.value = task.due || '';
   } else {
     title.textContent = 'New Task';
     input.value = '';
     priority.value = 'medium';
     assignee.value = '';
     col.value = defaultCol;
+    due.value = '';
   }
 
   overlay.classList.remove('hidden');
@@ -374,6 +395,7 @@ function saveModal() {
   const priority = document.getElementById('modal-priority').value;
   const assignee = document.getElementById('modal-assignee').value.trim();
   const col      = document.getElementById('modal-col').value;
+  const due      = document.getElementById('modal-due').value;
 
   if (!input) {
     document.getElementById('modal-input').focus();
@@ -386,9 +408,10 @@ function saveModal() {
     task.priority = priority;
     task.assignee = assignee;
     task.status   = col;
+    task.due      = due || null;
     toast('Task updated ✓', 'success');
   } else {
-    const newTask = { id: uid(), title: input, priority, assignee, status: col, comments: [] };
+    const newTask = { id: uid(), title: input, priority, assignee, status: col, due: due || null, comments: [] };
     tasks.push(newTask);
     logActivity('task_created', newTask);
     toast('Task created ✓', 'success');
@@ -810,6 +833,27 @@ function toast(msg, type = 'info') {
   el.textContent = msg;
   container.appendChild(el);
   setTimeout(() => el.remove(), 3200);
+}
+
+// ── Due Date Helpers ───────────────────────────
+function getDueStatus(due) {
+  if (!due) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Parse YYYY-MM-DD as local date to avoid timezone offset issues
+  const parts = due.split('-');
+  const dueDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  const diffDays = (dueDate - today) / (1000 * 60 * 60 * 24);
+  if (diffDays < 0) return 'overdue';
+  if (diffDays <= 2) return 'due-soon';
+  return 'on-track';
+}
+
+function formatDueDate(due) {
+  if (!due) return '';
+  const parts = due.split('-');
+  const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 // ── Helpers ────────────────────────────────────
