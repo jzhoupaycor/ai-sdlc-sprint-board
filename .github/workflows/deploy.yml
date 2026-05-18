@@ -10,6 +10,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  pull-requests: write
 
 # Only one deploy at a time; cancel in-progress if a new one starts
 concurrency:
@@ -70,30 +71,44 @@ jobs:
 
       # Post deploy URL to the PR that triggered this deploy (if any)
       - name: Comment deploy URL on merged PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          PAGE_URL="${{ steps.deployment.outputs.page_url }}"
-          SHORT_SHA="${{ github.sha }}"
-          SHORT_SHA="${SHORT_SHA:0:7}"
-
-          # Find the PR that was merged into this push (if any)
-          PR_NUM=$(gh pr list --state merged --base main --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
-
-          if [ -n "$PR_NUM" ]; then
-            gh pr comment "$PR_NUM" --body "### Deployed to GitHub Pages
-
-**Live URL:** ${PAGE_URL}
-
-| Detail | Value |
-|--------|-------|
-| Commit | \`${SHORT_SHA}\` |
-| Deployed by | @${{ github.actor }} |
-| Status | Live |
-
-_Auto-deployed by GitHub Actions after merge._"
-            echo "Posted deploy URL to PR #${PR_NUM}"
-          else
-            echo "No PR found to comment on — deploy complete anyway."
-          fi
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find the most recently merged PR into main
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              base: 'main',
+              per_page: 1,
+              sort: 'updated',
+              direction: 'desc',
+            });
+            if (!prs.length || !prs[0].merged_at) {
+              console.log('No recently merged PR found — skipping comment.');
+              return;
+            }
+            const pr = prs[0];
+            const pageUrl = '${{ steps.deployment.outputs.page_url }}';
+            const sha     = '${{ github.sha }}'.slice(0, 7);
+            const actor   = '${{ github.actor }}';
+            const body = [
+              '### Deployed to GitHub Pages',
+              '',
+              `**Live URL:** ${pageUrl}`,
+              '',
+              '| Detail | Value |',
+              '|--------|-------|',
+              `| Commit | \`${sha}\` |`,
+              `| Deployed by | @${actor} |`,
+              '| Status | Live |',
+              '',
+              '_Auto-deployed by GitHub Actions after merge._',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body,
+            });
+            console.log(`Posted deploy URL to PR #${pr.number}`);

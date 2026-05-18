@@ -31,12 +31,7 @@ jobs:
         run: |
           PR="${{ github.event.pull_request.number }}"
           echo "Enabling auto-merge on PR #${PR}..."
-          gh pr merge "$PR" --auto --squash \
-            --subject "$(gh pr view $PR --json title --jq .title)" \
-            --body "Auto-merged after CI checks passed and reviewer approved.
-
-Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-Commit: ${{ github.event.pull_request.head.sha }}"
+          gh pr merge "$PR" --auto --squash
           echo "Auto-merge enabled. PR will merge once all checks pass and 1 reviewer approves."
 
   # ── Job 2: Report merge status when a review is submitted ──
@@ -46,38 +41,37 @@ Commit: ${{ github.event.pull_request.head.sha }}"
     runs-on: ubuntu-latest
     steps:
       - name: Check review state and report
+        uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          REVIEW_STATE="${{ github.event.review.state }}"
-          REVIEWER="${{ github.event.review.user.login }}"
-          PR="${{ github.event.pull_request.number }}"
-
-          echo "Review received on PR #${PR}"
-          echo "  Reviewer : @${REVIEWER}"
-          echo "  State    : ${REVIEW_STATE}"
-
-          if [ "$REVIEW_STATE" = "approved" ]; then
-            echo "PR #${PR} approved by @${REVIEWER}!"
-            echo "GitHub will auto-merge once all required status checks pass."
-
-            # Post a status comment on the PR
-            gh pr comment "$PR" --body "### Approved by @${REVIEWER}
-
-Auto-merge is enabled. GitHub will merge this PR automatically as soon as all required CI checks pass.
-
-| Gate | Status |
-|------|--------|
-| CI — Lint and Validate | checking... |
-| CI — Accessibility | checking... |
-| CI — Build Summary | checking... |
-| Human Approval | **Approved by @${REVIEWER}** |
-
-_Once all checks are green, the merge and deploy will happen automatically._"
-
-          elif [ "$REVIEW_STATE" = "changes_requested" ]; then
-            echo "Changes requested — auto-merge will not fire until a new approval is given."
-          else
-            echo "Review state: ${REVIEW_STATE} — no action needed."
-          fi
+          REVIEW_STATE: ${{ github.event.review.state }}
+          REVIEWER: ${{ github.event.review.user.login }}
+        with:
+          script: |
+            const state    = process.env.REVIEW_STATE;
+            const reviewer = process.env.REVIEWER;
+            const prNumber = context.payload.pull_request.number;
+            console.log(`Review on PR #${prNumber} — state: ${state}, reviewer: @${reviewer}`);
+            if (state !== 'approved') {
+              console.log(`State is '${state}' — no action needed.`);
+              return;
+            }
+            const body = [
+              `### Approved by @${reviewer}`,
+              '',
+              'Auto-merge is enabled. GitHub will merge this PR automatically once all required CI checks pass.',
+              '',
+              '| Gate | Status |',
+              '|------|--------|',
+              '| CI — Lint and Validate | checking... |',
+              '| CI — Accessibility | checking... |',
+              '| CI — Build Summary | checking... |',
+              `| Human Approval | **Approved by @${reviewer}** |`,
+              '',
+              '_Once all checks are green, the merge and deploy will happen automatically._',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });

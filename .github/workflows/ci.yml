@@ -108,7 +108,7 @@ jobs:
       # preventing context.payload.pull_request from being undefined on push.
       - name: Post PR comment with check results
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             const body = [
