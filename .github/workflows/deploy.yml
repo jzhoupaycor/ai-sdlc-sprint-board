@@ -57,7 +57,7 @@ jobs:
 
       - name: Print deployed URL
         run: |
-          echo "## 🚀 Deployed!" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployed!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Live URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -67,3 +67,33 @@ jobs:
           echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Triggered by | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
           echo "| PR approved by | _(human reviewer)_ |" >> $GITHUB_STEP_SUMMARY
+
+      # Post deploy URL to the PR that triggered this deploy (if any)
+      - name: Comment deploy URL on merged PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          PAGE_URL="${{ steps.deployment.outputs.page_url }}"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+
+          # Find the PR that was merged into this push (if any)
+          PR_NUM=$(gh pr list --state merged --base main --limit 1 --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUM" ]; then
+            gh pr comment "$PR_NUM" --body "### Deployed to GitHub Pages
+
+**Live URL:** ${PAGE_URL}
+
+| Detail | Value |
+|--------|-------|
+| Commit | \`${SHORT_SHA}\` |
+| Deployed by | @${{ github.actor }} |
+| Status | Live |
+
+_Auto-deployed by GitHub Actions after merge._"
+            echo "Posted deploy URL to PR #${PR_NUM}"
+          else
+            echo "No PR found to comment on — deploy complete anyway."
+          fi

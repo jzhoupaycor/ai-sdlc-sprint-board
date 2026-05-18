@@ -1,0 +1,83 @@
+name: Auto-Merge after Approval
+
+# Triggered when:
+#   1. A PR is opened/updated  → enable auto-merge on it immediately
+#   2. A review is submitted   → if approved + checks pass, GitHub merges automatically
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write       # needed to merge
+  pull-requests: write  # needed to read/update PR
+
+jobs:
+  # ── Job 1: Enable auto-merge the moment a PR is opened ──
+  # GitHub will hold the merge until:
+  #   ✅ All required status checks pass  (CI — Checks)
+  #   ✅ At least 1 reviewer approves     (branch protection)
+  enable-auto-merge:
+    name: Enable Auto-Merge
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash) on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          PR="${{ github.event.pull_request.number }}"
+          echo "Enabling auto-merge on PR #${PR}..."
+          gh pr merge "$PR" --auto --squash \
+            --subject "$(gh pr view $PR --json title --jq .title)" \
+            --body "Auto-merged after CI checks passed and reviewer approved.
+
+Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+Commit: ${{ github.event.pull_request.head.sha }}"
+          echo "Auto-merge enabled. PR will merge once all checks pass and 1 reviewer approves."
+
+  # ── Job 2: Report merge status when a review is submitted ──
+  report-on-review:
+    name: Report Review Status
+    if: github.event_name == 'pull_request_review'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review state and report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          REVIEW_STATE="${{ github.event.review.state }}"
+          REVIEWER="${{ github.event.review.user.login }}"
+          PR="${{ github.event.pull_request.number }}"
+
+          echo "Review received on PR #${PR}"
+          echo "  Reviewer : @${REVIEWER}"
+          echo "  State    : ${REVIEW_STATE}"
+
+          if [ "$REVIEW_STATE" = "approved" ]; then
+            echo "PR #${PR} approved by @${REVIEWER}!"
+            echo "GitHub will auto-merge once all required status checks pass."
+
+            # Post a status comment on the PR
+            gh pr comment "$PR" --body "### Approved by @${REVIEWER}
+
+Auto-merge is enabled. GitHub will merge this PR automatically as soon as all required CI checks pass.
+
+| Gate | Status |
+|------|--------|
+| CI — Lint and Validate | checking... |
+| CI — Accessibility | checking... |
+| CI — Build Summary | checking... |
+| Human Approval | **Approved by @${REVIEWER}** |
+
+_Once all checks are green, the merge and deploy will happen automatically._"
+
+          elif [ "$REVIEW_STATE" = "changes_requested" ]; then
+            echo "Changes requested — auto-merge will not fire until a new approval is given."
+          else
+            echo "Review state: ${REVIEW_STATE} — no action needed."
+          fi
