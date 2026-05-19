@@ -6,6 +6,7 @@ const STORAGE_KEY = 'ai-sdlc-tasks';
 const SPRINT_KEY = 'ai-sdlc-sprint';
 const SPRINT_HISTORY_KEY = 'ai-sdlc-sprint-history';
 const ACTIVITY_KEY = 'ai-sdlc-activity';
+const THEME_KEY = 'ai-sdlc-theme';
 
 const COLUMNS = ['backlog', 'inprogress', 'review', 'done'];
 
@@ -51,6 +52,7 @@ function init() {
   }
   const storedActivity = localStorage.getItem(ACTIVITY_KEY);
   activityLog = storedActivity ? JSON.parse(storedActivity) : [];
+  initTheme();
   render();
   bindGlobalEvents();
   initSprint();
@@ -76,6 +78,29 @@ function save() {
 
 function saveActivity() {
   localStorage.setItem(ACTIVITY_KEY, JSON.stringify(activityLog));
+}
+
+function initTheme() {
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  const theme = savedTheme === 'light' ? 'light' : 'dark';
+  setTheme(theme);
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const themeBtn = document.getElementById('theme-toggle-btn');
+  if (!themeBtn) return;
+  const nextMode = theme === 'dark' ? 'light' : 'dark';
+  themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+  themeBtn.title = `Switch to ${nextMode} mode`;
+  themeBtn.setAttribute('aria-label', themeBtn.title);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  setTheme(nextTheme);
+  localStorage.setItem(THEME_KEY, nextTheme);
 }
 
 function logActivity(type, task, extra = {}) {
@@ -773,6 +798,8 @@ function bindGlobalEvents() {
   document.querySelectorAll('.add-in-col').forEach(btn => {
     btn.addEventListener('click', () => openModal(btn.dataset.col));
   });
+
+  document.getElementById('theme-toggle-btn').addEventListener('click', toggleTheme);
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
