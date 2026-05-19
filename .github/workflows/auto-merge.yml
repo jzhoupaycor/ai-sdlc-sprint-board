@@ -43,12 +43,13 @@ jobs:
   # GitHub's Copilot collaboration restriction disqualifies the repo owner
   # from satisfying formal review requirements on Copilot-generated PRs.
   # This job uses --admin to execute the merge on the reviewer's behalf.
+  # NOTE: Copilot agent opens PRs as DRAFTS — if the reviewer approves while
+  # the PR is still a draft, this job un-drafts it first then merges.
   merge-on-approval:
     name: Merge on Approval (Admin Bypass)
     if: >
       github.event_name == 'pull_request_review' &&
-      github.event.review.state == 'approved' &&
-      github.event.pull_request.draft == false
+      github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     steps:
       - name: Merge PR with admin bypass
@@ -58,26 +59,29 @@ jobs:
         run: |
           PR="${{ github.event.pull_request.number }}"
           REVIEWER="${{ github.event.review.user.login }}"
-          IS_DRAFT="${{ github.event.pull_request.draft }}"
-          echo "PR #${PR} approved by @${REVIEWER} — checking state..."
+          echo "PR #${PR} approved by @${REVIEWER} — inspecting state..."
 
-          if [ "$IS_DRAFT" = "true" ]; then
-            echo "PR #${PR} is still a draft — skipping merge."
-            exit 0
-          fi
+          # Fetch state + draft status in one call (jq is pre-installed on ubuntu-latest)
+          PR_JSON=$(gh pr view "$PR" --json state,isDraft)
+          STATE=$(echo "$PR_JSON"    | jq -r '.state')
+          IS_DRAFT=$(echo "$PR_JSON" | jq -r '.isDraft')
 
-          STATE=$(gh pr view "$PR" --json state --jq '.state')
+          # Guard: already merged (e.g. native auto-merge fired first)
           if [ "$STATE" = "MERGED" ]; then
-            echo "PR #${PR} is already merged — admin bypass not needed. Exiting."
+            echo "PR #${PR} is already merged — admin bypass not needed."
             exit 0
           fi
 
-          if [ "$STATE" != "OPEN" ]; then
-            echo "PR #${PR} is in state '${STATE}' — cannot merge."
-            exit 0
+          # Copilot agent creates PRs as drafts; if the reviewer approved while
+          # it was still a draft we must un-draft it before GitHub will allow merge.
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "PR #${PR} is still a draft — marking as ready for review..."
+            gh pr ready "$PR"
+            echo "Waiting 5 s for GitHub to propagate ready state..."
+            sleep 5
           fi
 
-          echo "State is '${STATE}' — proceeding with admin bypass merge..."
+          echo "State='${STATE}' Draft='${IS_DRAFT}' — merging with admin bypass..."
           gh pr merge "$PR" --squash --admin --delete-branch
           echo "Merged PR #${PR}. Deploy workflow will now trigger."
 
