@@ -8,6 +8,7 @@ const SPRINT_HISTORY_KEY = 'ai-sdlc-sprint-history';
 const ACTIVITY_KEY = 'ai-sdlc-activity';
 
 const COLUMNS = ['backlog', 'inprogress', 'review', 'done'];
+const PRIORITIES = ['low', 'medium', 'high'];
 
 const PRIORITY_LABELS = {
   low: '🟢 Low',
@@ -43,8 +44,20 @@ function init() {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
     tasks = JSON.parse(stored);
-    // Ensure all tasks have a comments array (backwards compat)
-    tasks.forEach(t => { if (!t.comments) t.comments = []; });
+    let migrated = false;
+    // Ensure all tasks have compatible fields (backwards compat)
+    tasks.forEach(t => {
+      if (!t.comments) {
+        t.comments = [];
+        migrated = true;
+      }
+      const normalizedPriority = normalizePriority(t.priority);
+      if (t.priority !== normalizedPriority) {
+        t.priority = normalizedPriority;
+        migrated = true;
+      }
+    });
+    if (migrated) save();
   } else {
     tasks = defaultTasks();
     save();
@@ -141,6 +154,10 @@ function render() {
     `${tasks.length} task${tasks.length !== 1 ? 's' : ''}`;
 }
 
+function normalizePriority(priority) {
+  return PRIORITIES.includes(priority) ? priority : 'medium';
+}
+
 function makeCard(task) {
   const card = document.createElement('div');
   card.className = 'card';
@@ -171,11 +188,13 @@ function makeCard(task) {
     : '';
   if (dueStatus === 'overdue') card.classList.add('overdue');
 
+  const priority = normalizePriority(task.priority);
+
   card.innerHTML = `
     <button class="card-delete" data-id="${task.id}" title="Delete">✕</button>
     <div class="card-title">${escHtml(task.title)}</div>
     <div class="card-meta">
-      <span class="priority-tag priority-${task.priority}">${PRIORITY_LABELS[task.priority]}</span>
+      <span class="priority-tag priority-${priority}">${PRIORITY_LABELS[priority]}</span>
       ${task.assignee ? `<span class="assignee-tag">${escHtml(task.assignee)}</span>` : ''}
       ${countBadge}
     </div>
@@ -377,7 +396,7 @@ function openModal(defaultCol = 'backlog', taskId = null) {
     const task = tasks.find(t => t.id === taskId);
     title.textContent = 'Edit Task';
     input.value = task.title;
-    priority.value = task.priority;
+    priority.value = normalizePriority(task.priority);
     assignee.value = task.assignee || '';
     col.value = task.status;
     due.value = task.due || '';
