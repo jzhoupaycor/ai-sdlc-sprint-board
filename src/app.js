@@ -132,7 +132,7 @@ function render() {
       t.status === col &&
       (!q || t.title.toLowerCase().includes(q) || (t.assignee || '').toLowerCase().includes(q))
     );
-    count.textContent = colTasks.length;
+    count.textContent = `[${colTasks.length}]`;
     list.innerHTML = '';
     colTasks.forEach(t => list.appendChild(makeCard(t)));
   });
